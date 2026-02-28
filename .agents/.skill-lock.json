@@ -1,0 +1,33 @@
+{
+  "version": 3,
+  "skills": {
+    "keep-markdown": {
+      "source": "keep/md",
+      "sourceType": "well-known",
+      "sourceUrl": "https://keep.md/docs/.well-known/skills/keep-markdown/SKILL.md",
+      "skillPath": "https://keep.md/docs/.well-known/skills/keep-markdown/SKILL.md",
+      "skillFolderHash": "",
+      "installedAt": "2026-02-28T02:14:33.330Z",
+      "updatedAt": "2026-02-28T02:14:33.330Z"
+    },
+    "chrome-webstore-release-blueprint": {
+      "source": "iannuttall/skills",
+      "sourceType": "github",
+      "sourceUrl": "https://github.com/iannuttall/skills.git",
+      "skillPath": "skills/chrome-webstore-release-blueprint/SKILL.md",
+      "skillFolderHash": "9becc11a6c478af897e990024a60e5a8a38de55a",
+      "installedAt": "2026-02-28T02:24:10.464Z",
+      "updatedAt": "2026-02-28T02:24:10.464Z"
+    },
+    "Telegram Bot Builder": {
+      "source": "davila7/claude-code-templates",
+      "sourceType": "github",
+      "sourceUrl": "https://github.com/davila7/claude-code-templates.git",
+      "skillPath": "cli-tool/components/skills/development/telegram-bot-builder/SKILL.md",
+      "skillFolderHash": "9b01e58636f3c7abfe218e19b00086692fa75661",
+      "installedAt": "2026-02-28T05:36:54.257Z",
+      "updatedAt": "2026-02-28T05:36:54.257Z"
+    }
+  },
+  "dismissed": {}
+}
