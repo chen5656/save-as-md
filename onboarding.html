@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Save as MD — Setup</title>
+  <link rel="stylesheet" href="onboarding.css">
+</head>
+<body>
+  <div class="wizard">
+
+    <!-- Progress bar -->
+    <div class="progress-bar">
+      <div class="progress-fill" id="progress-fill" style="width: 33%"></div>
+    </div>
+
+    <!-- Step indicators -->
+    <div class="steps-indicator">
+      <div class="step-dot active" data-step="1">1</div>
+      <div class="step-line"></div>
+      <div class="step-dot" data-step="2">2</div>
+      <div class="step-line"></div>
+      <div class="step-dot" data-step="3">3</div>
+    </div>
+
+    <!-- ── Step 1: Telegram Bot ── -->
+    <div class="step" id="step-1">
+      <div class="step-icon">🤖</div>
+      <h1>Create Your Telegram Bot</h1>
+      <p class="subtitle">Your bot acts as a personal message queue — completely free and under your control.</p>
+
+      <div class="instructions-box">
+        <ol class="instructions">
+          <li>Open Telegram and search for <strong>@BotFather</strong></li>
+          <li>Send the message: <code>/newbot</code></li>
+          <li>Follow the prompts — pick any name and username</li>
+          <li>Copy the <strong>bot token</strong> BotFather sends you</li>
+          <li>Paste it below and click Verify</li>
+        </ol>
+      </div>
+
+      <div class="field-group">
+        <label for="bot-token" class="field-label">Bot Token</label>
+        <div class="token-row">
+          <input
+            type="text"
+            id="bot-token"
+            class="input"
+            placeholder="123456789:AAF_AbCdEfGhIjKlMnOpQrStUvWxYz12345"
+            autocomplete="off"
+            spellcheck="false"
+          >
+          <button id="verify-btn" class="btn btn-secondary">Verify</button>
+        </div>
+        <div id="token-status" class="field-status"></div>
+      </div>
+
+      <div id="bot-success" class="success-box hidden">
+        <span class="success-icon">✅</span>
+        <div>
+          <div class="success-title">Bot verified!</div>
+          <div id="bot-username-display" class="success-sub"></div>
+        </div>
+      </div>
+
+      <div class="step-footer">
+        <div></div>
+        <button id="step1-next" class="btn btn-primary" disabled>
+          Next: Choose Folder →
+        </button>
+      </div>
+    </div>
+
+    <!-- ── Step 2: Choose Folder ── -->
+    <div class="step hidden" id="step-2">
+      <div class="step-icon">📁</div>
+      <h1>Choose Save Folder</h1>
+      <p class="subtitle">Pick a local folder where your Markdown files will be saved.</p>
+
+      <div class="instructions-box">
+        <p>The extension will save:</p>
+        <ul class="folder-list">
+          <li>One <code>.md</code> file per saved URL</li>
+          <li>A daily <code>YYYY-MM-DD.md</code> for texts and notes</li>
+          <li>A <code>YYYY-MM-DD/</code> subfolder for images</li>
+        </ul>
+      </div>
+
+      <button id="choose-folder-btn" class="btn btn-secondary folder-btn">
+        📂 Choose Folder
+      </button>
+
+      <div id="folder-status" class="folder-status hidden">
+        <span class="folder-icon">📂</span>
+        <div>
+          <div class="folder-name" id="folder-name"></div>
+          <div class="folder-sub">Write access granted</div>
+        </div>
+      </div>
+
+      <div class="step-footer">
+        <button id="step2-back" class="btn btn-ghost">← Back</button>
+        <button id="step2-next" class="btn btn-primary" disabled>
+          Finish Setup →
+        </button>
+      </div>
+    </div>
+
+    <!-- ── Step 3: Done ── -->
+    <div class="step hidden" id="step-3">
+      <div class="step-icon done-icon">🎉</div>
+      <h1>You're All Set!</h1>
+      <p class="subtitle">Save as MD is now running in the background, polling your bot every 5 minutes.</p>
+
+      <div class="done-card">
+        <div class="done-row">
+          <span class="done-label">Bot</span>
+          <span id="done-bot-name" class="done-value"></span>
+        </div>
+        <div class="done-row">
+          <span class="done-label">Save folder</span>
+          <span id="done-folder-name" class="done-value"></span>
+        </div>
+        <div class="done-row">
+          <span class="done-label">Poll interval</span>
+          <span class="done-value">Every 5 minutes</span>
+        </div>
+      </div>
+
+      <div class="test-tip">
+        <strong>Test it now:</strong> Open Telegram and send any URL to
+        <strong id="done-bot-link"></strong>
+      </div>
+
+      <div class="step-footer">
+        <div></div>
+        <button id="close-btn" class="btn btn-primary">Close Setup</button>
+      </div>
+    </div>
+
+  </div>
+
+  <script src="onboarding.js"></script>
+</body>
+</html>

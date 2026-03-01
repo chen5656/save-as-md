@@ -1,0 +1,344 @@
+/* Save as MD — Onboarding Styles */
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: #f8fafc;
+  min-height: 100vh;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 40px 16px;
+  color: #1a1a1a;
+}
+
+.wizard {
+  background: #fff;
+  border-radius: 16px;
+  box-shadow: 0 4px 24px rgba(0,0,0,0.08);
+  width: 100%;
+  max-width: 540px;
+  overflow: hidden;
+}
+
+/* ── Progress bar ── */
+.progress-bar {
+  height: 4px;
+  background: #f0f0f0;
+}
+
+.progress-fill {
+  height: 100%;
+  background: #2563eb;
+  transition: width 0.4s ease;
+}
+
+/* ── Step dots ── */
+.steps-indicator {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+  padding: 20px 40px 0;
+}
+
+.step-dot {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: #e5e7eb;
+  color: #9ca3af;
+  font-size: 12px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.3s;
+  flex-shrink: 0;
+}
+
+.step-dot.active {
+  background: #2563eb;
+  color: #fff;
+}
+
+.step-dot.done {
+  background: #22c55e;
+  color: #fff;
+}
+
+.step-line {
+  flex: 1;
+  height: 2px;
+  background: #e5e7eb;
+  max-width: 80px;
+}
+
+/* ── Step content ── */
+.step {
+  padding: 32px 40px;
+}
+
+.step-icon {
+  font-size: 48px;
+  text-align: center;
+  margin-bottom: 16px;
+  display: block;
+}
+
+.done-icon { animation: pop 0.4s cubic-bezier(0.34, 1.56, 0.64, 1); }
+
+@keyframes pop {
+  0%   { transform: scale(0.5); opacity: 0; }
+  100% { transform: scale(1);   opacity: 1; }
+}
+
+h1 {
+  font-size: 22px;
+  font-weight: 700;
+  text-align: center;
+  margin-bottom: 8px;
+  color: #111;
+}
+
+.subtitle {
+  font-size: 14px;
+  color: #555;
+  text-align: center;
+  line-height: 1.5;
+  margin-bottom: 24px;
+}
+
+/* ── Instructions box ── */
+.instructions-box {
+  background: #f0f7ff;
+  border: 1px solid #bfdbfe;
+  border-radius: 10px;
+  padding: 16px 20px;
+  margin-bottom: 24px;
+}
+
+.instructions {
+  padding-left: 20px;
+  color: #1e40af;
+  font-size: 14px;
+  line-height: 1.8;
+}
+
+.instructions code {
+  background: #dbeafe;
+  border-radius: 4px;
+  padding: 1px 6px;
+  font-family: 'SF Mono', monospace;
+  font-size: 13px;
+}
+
+.folder-list {
+  padding-left: 20px;
+  color: #1e40af;
+  font-size: 14px;
+  line-height: 1.8;
+  margin-top: 6px;
+}
+
+.folder-list code {
+  background: #dbeafe;
+  border-radius: 4px;
+  padding: 1px 6px;
+  font-family: 'SF Mono', monospace;
+  font-size: 13px;
+}
+
+/* ── Fields ── */
+.field-group { margin-bottom: 16px; }
+
+.field-label {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  color: #374151;
+  margin-bottom: 6px;
+}
+
+.token-row {
+  display: flex;
+  gap: 8px;
+}
+
+.input {
+  flex: 1;
+  padding: 9px 12px;
+  border: 1.5px solid #d1d5db;
+  border-radius: 8px;
+  font-size: 13px;
+  font-family: 'SF Mono', 'Menlo', monospace;
+  color: #111;
+  background: #fff;
+  transition: border-color 0.15s;
+  outline: none;
+}
+
+.input:focus { border-color: #2563eb; box-shadow: 0 0 0 3px rgba(37,99,235,0.1); }
+.input.error { border-color: #ef4444; }
+.input.success { border-color: #22c55e; }
+
+.field-status {
+  margin-top: 6px;
+  font-size: 12px;
+  min-height: 18px;
+  color: #555;
+}
+
+.field-status.error { color: #dc2626; }
+.field-status.success { color: #16a34a; }
+
+/* ── Success box ── */
+.success-box {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  border-radius: 10px;
+  padding: 14px 16px;
+  margin-bottom: 16px;
+}
+
+.success-icon { font-size: 24px; }
+
+.success-title {
+  font-weight: 600;
+  font-size: 14px;
+  color: #15803d;
+}
+
+.success-sub {
+  font-size: 13px;
+  color: #16a34a;
+}
+
+/* ── Folder status ── */
+.folder-btn {
+  width: 100%;
+  margin-bottom: 16px;
+  font-size: 15px;
+  padding: 12px;
+}
+
+.folder-status {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  border-radius: 10px;
+  padding: 14px 16px;
+  margin-bottom: 16px;
+}
+
+.folder-icon { font-size: 24px; }
+
+.folder-name {
+  font-weight: 600;
+  font-size: 14px;
+  color: #15803d;
+  word-break: break-all;
+}
+
+.folder-sub { font-size: 12px; color: #16a34a; }
+
+/* ── Done card ── */
+.done-card {
+  background: #f8fafc;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  padding: 16px 20px;
+  margin-bottom: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.done-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+}
+
+.done-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: #6b7280;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  flex-shrink: 0;
+}
+
+.done-value {
+  font-size: 14px;
+  font-weight: 500;
+  color: #111;
+  text-align: right;
+  word-break: break-all;
+}
+
+.test-tip {
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+  border-radius: 10px;
+  padding: 14px 16px;
+  font-size: 14px;
+  color: #78350f;
+  line-height: 1.5;
+  margin-bottom: 8px;
+}
+
+/* ── Buttons ── */
+.btn {
+  padding: 9px 20px;
+  border: none;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.btn:disabled { opacity: 0.45; cursor: not-allowed; }
+
+.btn-primary {
+  background: #2563eb;
+  color: #fff;
+}
+
+.btn-primary:hover:not(:disabled) { background: #1d4ed8; }
+
+.btn-secondary {
+  background: #f3f4f6;
+  color: #374151;
+  border: 1.5px solid #d1d5db;
+}
+
+.btn-secondary:hover:not(:disabled) { background: #e5e7eb; }
+
+.btn-ghost {
+  background: transparent;
+  color: #6b7280;
+}
+
+.btn-ghost:hover:not(:disabled) { color: #374151; background: #f3f4f6; }
+
+/* ── Step footer ── */
+.step-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 24px;
+  padding-top: 20px;
+  border-top: 1px solid #f0f0f0;
+}
