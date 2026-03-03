@@ -1,164 +1,104 @@
-# Markdown Vault — Chrome Extension
+# Markdown Vault
 
-Chrome Extension (MV3). Polls a Telegram bot for incoming messages and saves URLs as local Markdown files via the File System Access API. Zero backend, no build step.
+![Version](https://img.shields.io/badge/version-1.0.0-blue) ![Platform](https://img.shields.io/badge/platform-Chrome%20MV3-green) ![No Build](https://img.shields.io/badge/build-none-lightgrey)
 
-## How It Works
+> **Send any URL to your Telegram bot — it gets saved as clean Markdown on your computer.** Zero backend, no build step, your data stays local.
 
-```
-Phone/any device → send URL to your Telegram bot
-  → Chrome extension polls Telegram every N minutes (chrome.alarms)
-  → fetches URL → Readability extraction → Markdown
-  → saves .md file to local folder (File System Access API)
-  → desktop notification
-```
+---
 
-Non-URL Telegram messages are appended to a daily `YYYY-MM-DD.md` file. Images from Telegram are downloaded to a `YYYY-MM-DD/` subfolder and referenced in the daily file.
+## Overview
 
-## File Structure
+Markdown Vault is a Chrome Extension (Manifest V3) that turns your Telegram bot into a personal read-later inbox. Send a URL from any device; the extension polls Telegram on a schedule, fetches the page, extracts readable content with Mozilla Readability, converts it to Markdown with Turndown, and writes the file directly to a local folder via the File System Access API. No server. No cloud sync. No account.
 
-```
-/
-├── background.js           # Service worker. Core logic: polling, URL processing, message handling.
-├── content-router.js       # classifyUrl(url, contentType) → type string
-├── metadata.js             # extractMetadata(html, url) → og:/JSON-LD (regex, no DOM)
-├── vtt-parser.js           # parseVttText(), parseJsonTranscriptText()
-├── youtube-handler.js      # handleYouTube(url, dirHandle, settings)
-├── media-handler.js        # handlePdf(), handleDirectMedia(), handleDirectImage()
-├── rss-handler.js          # handleRss(url, dirHandle, settings, xmlText?)
-├── podcast-handler.js      # handlePodcast(url, html, dirHandle, settings)
-├── manifest.json           # MV3. No "type: module". Classic service worker.
-├── libs/
-│   ├── Readability.js      # Mozilla Readability 0.5.0 (bundled)
-│   ├── turndown.js         # Turndown 7.2.0 (bundled)
-│   └── turndown-plugin-gfm.js
-└── pages/
-    ├── offscreen/
-    │   ├── offscreen.html
-    │   └── offscreen.js    # DOMParser context. Handles parse_html, convert_html, parse_rss messages.
-    ├── popup/
-    │   ├── popup.html
-    │   ├── popup.js
-    │   └── popup.css
-    ├── settings/
-    │   ├── settings.html
-    │   ├── settings.js
-    │   └── settings.css
-    └── onboarding/
-        ├── onboarding.html
-        └── onboarding.js
+## Features
+
+- **Telegram-driven capture** — send URLs from any device to your bot; the extension polls and processes them automatically
+- **Clean Markdown output** — Mozilla Readability + Turndown strip boilerplate; YAML frontmatter optional
+- **Rich content support** — YouTube captions, podcast transcripts (Podcasting 2.0), RSS feeds (up to 50 items), PDFs, audio/video, and direct images
+- **JS-rendered page fallback** — if Readability fails, injects a script into a background tab and retries common CSS selectors
+- **Local-first paste zone** — paste a URL, screenshot, or plain text directly in the popup to save on the spot
+- **Right-click context menu** — "Save to Markdown Vault" on any page or link (toggleable in Settings)
+- **Daily log** — non-URL Telegram messages and Telegram images append to a `YYYY-MM-DD.md` daily file
+- **Retry logic** — up to 3 retries with exponential back-off (30 s → 120 s → 300 s); state survives service worker restarts
+
+## Installation
+
+No build step. Load the extension directly from source.
+
+```bash
+# 1. Clone the repo
+git clone https://github.com/chen5656/save-as-md.git
+cd save-as-md
 ```
 
-## Setup (no build step)
+1. Open `chrome://extensions` in Chrome
+2. Enable **Developer mode** (top-right toggle)
+3. Click **Load unpacked** → select the `save-as-md` folder
+4. Click the extension icon → **Start Setup**
+5. Paste your Telegram bot token and pick a local save folder
 
-1. Open `chrome://extensions`, enable Developer mode
-2. Click "Load unpacked" → select this folder
-3. Click the extension icon → "Start Setup" → paste Telegram bot token → choose save folder
+**Creating a Telegram bot:** message [@BotFather](https://t.me/BotFather) on Telegram → `/newbot` → copy the token.
 
-## Key Files
+## Usage
 
-### background.js
-Main service worker. Loads all handler modules via `importScripts()` at startup (classic SW, not ESM).
-
-**Key functions:**
-- `poll()` — calls Telegram `getUpdates`, dispatches each update via `processUpdate()`
-- `processUpdate(update, token, settings)` — routes by message type (URL, photo, document, text)
-- `processURLWithRetry(url, attemptIndex, messageCtx, settings)` — full URL processing pipeline
-- `fetchURL(url)` → `{ html, finalUrl, binaryData, contentType, contentDisposition }`
-- `fetchWithBackgroundTab(url)` — injects Readability into a live tab for JS-rendered pages
-- `getDirHandle()` — returns FileSystemDirectoryHandle from IndexedDB, checks permissions
-- `saveMarkdownFile(dirHandle, filename, content)` — deduplicates filenames with `-2`, `-3` etc.
-- `appendToDaily(dirHandle, content, date)` — appends to YYYY-MM-DD.md
-- `saveImageToFolder(dirHandle, date, filename, arrayBuffer)` — saves to date subfolder
-- `setupContextMenu()` — creates/removes context menu based on `context_menu_enabled` setting
-- `buildFrontmatter(fields)`, `buildFilename(title, pattern, date)`, `slugify(text, maxLen)`
-
-**URL processing flow in `processURLWithRetry`:**
-1. Pre-fetch: `classifyUrl(url)` → if `youtube`, call `handleYouTube()` and return
-2. `fetchURL(url)` → returns HTML or binary
-3. Post-fetch: `classifyUrl(effectiveUrl, contentType)` routes:
-   - `rss` → `handleRss()`
-   - `pdf` → `handlePdf()`
-   - `direct-audio/video` → `handleDirectMedia()`
-   - `direct-image` → `handleDirectImage()`
-   - `podcast` → `handlePodcast()`
-   - unknown binary → save to `YYYY-MM-DD/` subfolder + companion `.md` with metadata
-4. HTML: `parseHtmlViaOffscreen()` → Readability + Turndown
-5. If content < 500 chars: `fetchWithBackgroundTab()` fallback (injects Readability into live DOM; if Readability returns null, tries common CSS selectors: `main article`, `article`, `[role="main"]`, etc.)
-
-### offscreen.js
-Handles `parse_html` (Readability + Turndown), `convert_html` (Turndown only), `parse_rss` (DOMParser for RSS/Atom XML).
-
-### content-router.js
-`classifyUrl(url, contentType?)` returns: `'youtube' | 'rss' | 'pdf' | 'direct-audio' | 'direct-video' | 'direct-image' | 'podcast' | 'html'`
-
-## Storage Keys (`chrome.storage.local`)
-
-| Key | Type | Description |
-|-----|------|-------------|
-| `bot_token` | string | Telegram bot token |
-| `bot_username` | string | Bot @username |
-| `setup_complete` | boolean | Onboarding done |
-| `last_update_id` | number | Telegram offset (dedup) |
-| `last_successful_poll` | ISO string | Last successful Telegram API call |
-| `pending_retries` | array | `{ url, attempt, next_retry_at, messageCtx }` |
-| `connection_warnings` | array | Disconnect events `{ id, start, end, duration, acknowledged }` |
-| `recent_saves` | array | Last 20 saves `{ title, filename, url, saved_at }` |
-| `is_polling_active` | boolean | Whether alarm is running |
-| `poll_interval` | number | Seconds between polls (default: 300) |
-| `include_frontmatter` | boolean | YAML header in .md files |
-| `use_gfm` | boolean | GitHub-Flavored Markdown |
-| `file_naming_pattern` | string | `'YYYY-MM-DD-slug'` (default), `'slug-YYYY-MM-DD'`, `'slug'` |
-| `has_disconnect_warning` | boolean | Unacknowledged disconnect exists |
-| `fs_permission_needed` | boolean | Folder permission revoked |
-| `folder_status` | string | `'ok'` \| `'missing'` \| `'permission_needed'` \| `'unknown'` |
-| `last_telegram_error` | string \| null | Last Telegram API error |
-| `context_menu_enabled` | boolean | Right-click "Save to Markdown Vault" menu item |
-
-## IndexedDB
-
-Key: `save_dir_handle` — stores the `FileSystemDirectoryHandle` (can't be stored in chrome.storage).
-
-## Message Types (popup/settings → background)
-
-| Type | Payload | Response |
-|------|---------|----------|
-| `get_state` | — | Full state object (no raw token; includes `next_poll_time`) |
-| `poll_now` | — | `{ success }` |
-| `save_url` | `{ url }` | `{ success }` |
-| `save_settings` | `{ settings }` | `{ success }` |
-| `start_polling` | — | `{ success }` |
-| `stop_polling` | — | `{ success }` |
-| `set_interval` | `{ intervalSeconds }` | `{ success }` |
-| `fs_permission_granted` | — | `{ success }` |
-| `verify_token` | `{ token }` | `{ success, username }` or `{ success: false, error }` |
-| `dismiss_warning` | `{ warningId }` | `{ success }` |
-| `clear_history` | — | `{ success }` |
-
-## Permissions
-
-```json
-["alarms", "storage", "notifications", "tabs", "scripting", "offscreen", "contextMenus"]
-+ host_permissions: ["<all_urls>"]
+**Saving a URL from your phone:**
+```
+Send any URL in a Telegram message to your bot
+→ extension polls on schedule (default: every 5 min)
+→ .md file appears in your chosen folder
 ```
 
-## File Naming
+**Saving from the browser (popup paste zone):**
+- Open the extension popup and paste a URL, image, or text — saves immediately, no confirm button needed.
 
-Default: `YYYY-MM-DD-slug.md`
-Binary files (PDF, audio, video, unknown): saved to `YYYY-MM-DD/<filename>` + companion `.md` metadata file at root.
-Telegram images: `YYYY-MM-DD/<date>-<timestamp>.<ext>` in the date subfolder.
+**Right-click save:**
+- Right-click any page or link → **Save to Markdown Vault**
 
-## Retry Logic
+**Manual poll:**
+- Open popup → click **Poll Now**
 
-- Up to 3 retries: 30s → 120s → 300s delays
-- 401/403/404: immediate failure, saves error `.md`
-- State survives service worker restarts (stored in chrome.storage)
+## Configuration
 
-## Context Menu
+All settings are stored in `chrome.storage.local` and managed via the Settings page.
 
-Right-click "Save to Markdown Vault" on pages/links. Toggleable via Settings. Recreated on `onInstalled` and `onStartup`.
+| Key | Default | Description |
+|-----|---------|-------------|
+| `poll_interval` | `300` | Seconds between Telegram polls |
+| `include_frontmatter` | `true` | Add YAML frontmatter to saved files |
+| `use_gfm` | `true` | GitHub-Flavored Markdown (tables, strikethrough) |
+| `file_naming_pattern` | `YYYY-MM-DD-slug` | Output filename format |
+| `context_menu_enabled` | `true` | Show right-click "Save to Markdown Vault" item |
 
-## Dependencies (bundled, no npm)
+## File Output
 
-- Mozilla Readability.js 0.5.0
-- Turndown 7.2.0
-- turndown-plugin-gfm 1.0.2
+| Content type | Output |
+|-------------|--------|
+| Web article | `YYYY-MM-DD-slug.md` |
+| YouTube | `YYYY-MM-DD-slug.md` with captions transcript |
+| RSS feed | `YYYY-MM-DD-slug.md` with up to 50 items |
+| PDF / audio / video | `YYYY-MM-DD/<filename>` + companion `YYYY-MM-DD-slug.md` metadata |
+| Telegram image | `YYYY-MM-DD/<date>-<timestamp>.<ext>` |
+| Telegram text | appended to `YYYY-MM-DD.md` |
+
+## For AI Agents
+
+This project ships an [`AGENT.md`](./AGENT.md) file — a compact quick-start guide optimised for AI coding assistants (Claude Code, Cursor, Windsurf, etc.).
+
+To onboard your agent:
+
+```
+Read the file AGENT.md for setup instructions and project conventions.
+```
+
+It covers: architecture map, setup, key constraints (classic SW — no ESM, no npm), configuration reference, safety boundaries, and a health-check command.
+
+## Contributing
+
+1. Fork the repo and create a branch from `main`
+2. Keep the no-build, no-npm constraint — all dependencies must be bundled in `libs/`
+3. Do not use ESM `import`/`export` — the service worker is a classic (non-module) SW
+4. Open a PR with a clear description of what changed and why
+
+## License
+
+No license file present — all rights reserved by the author. Contact the repository owner for usage permissions.

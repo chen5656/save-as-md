@@ -422,9 +422,20 @@ async function fetchWithBackgroundTab(url) {
             const probe = await chrome.scripting.executeScript({
               target: { tabId: tab.id },
               func: () => {
-                const article = document.querySelector('article[data-testid="tweet"], article[role="article"]');
-                const tweetText = document.querySelector('div[data-testid="tweetText"]');
-                return !!(article && tweetText);
+                const hasTweet = !!(
+                  document.querySelector('article[data-testid="tweet"], article[role="article"]') &&
+                  document.querySelector('div[data-testid="tweetText"]')
+                );
+                // Also detect X Notes / article pages (/i/article/ URL) or other article content
+                const isArticlePage = /\/i\/article/.test(window.location.pathname);
+                const hasArticle = isArticlePage
+                  ? !!(document.querySelector('main, [role="main"], article, [role="article"]')?.textContent?.trim().length > 300)
+                  : !!(
+                    document.querySelector('div[data-testid="article-text"]') ||
+                    document.querySelector('[data-testid="articleContent"]') ||
+                    (document.querySelector('[data-testid="primaryColumn"]')?.textContent?.trim().length > 500)
+                  );
+                return hasTweet || hasArticle;
               },
             });
             if (probe[0]?.result) { resolve(); return; }
@@ -587,6 +598,62 @@ async function fetchWithBackgroundTab(url) {
 
       const xPost = xResults[0]?.result || null;
       if (xPost?.content) return xPost;
+
+      // X Notes / Article fallback — for status URLs whose SPA navigates to /i/article/
+      const noteResults = await chrome.scripting.executeScript({
+        target: { tabId: tab.id },
+        func: () => {
+          const clean = t =>
+            (t || '')
+              .replace(/\u00A0/g, ' ')
+              .replace(/[ \t]+\n/g, '\n')
+              .replace(/\n{3,}/g, '\n\n')
+              .trim();
+
+          const getTitle = () => clean(
+            document.querySelector('meta[property="og:title"]')?.content ||
+            document.querySelector('h1')?.innerText ||
+            document.title.replace(/\s*[\/|]\s*X\s*$/, '').trim() ||
+            ''
+          );
+
+          const isArticlePage = /\/i\/article\//.test(window.location.pathname);
+
+          if (isArticlePage) {
+            // X article reader — try progressively broader selectors
+            const articleSelectors = [
+              '[data-testid="article"]',
+              '[role="article"]',
+              'article',
+              'main',
+              '[role="main"]',
+            ];
+            for (const sel of articleSelectors) {
+              const el = document.querySelector(sel);
+              if (el) {
+                const content = clean(el.innerText || el.textContent || '');
+                if (content.length > 200) return { title: getTitle(), content, markdownReady: true };
+              }
+            }
+            // Last resort: body text minus nav
+            const body = document.body?.innerText || '';
+            const content = clean(body);
+            if (content.length > 300) return { title: getTitle(), content, markdownReady: true };
+          } else {
+            // Still on status page — try X Notes data-testid and primaryColumn
+            for (const sel of ['div[data-testid="article-text"]', '[data-testid="articleContent"]', '[data-testid="primaryColumn"]']) {
+              const el = document.querySelector(sel);
+              if (el) {
+                const content = clean(el.innerText || el.textContent || '');
+                if (content.length > 200) return { title: getTitle(), content, markdownReady: true };
+              }
+            }
+          }
+          return null;
+        },
+      });
+      const noteData = noteResults[0]?.result;
+      if (noteData?.content) return noteData;
     }
 
     // Xiaohongshu (小红书) — JS-rendered; extract note content and CDN images from live DOM
@@ -1864,6 +1931,32 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       case 'save_url': {
         const settings = await getSettings();
         await processURLWithRetry(message.url, 0, { manual: true }, settings);
+        return { success: true };
+      }
+
+      case 'save_clipboard_image': {
+        const dirHandle = await getDirHandle();
+        if (!dirHandle) throw new Error('No save folder configured');
+        const { dataUrl, mimeType } = message;
+        const ext = (mimeType || 'image/png').split('/')[1]?.split('+')[0] || 'png';
+        const d = dateString();
+        const imgFilename = `${d}-${Date.now()}.${ext}`;
+        const base64 = dataUrl.split(',')[1] || '';
+        const binaryStr = atob(base64);
+        const bytes = new Uint8Array(binaryStr.length);
+        for (let i = 0; i < binaryStr.length; i++) bytes[i] = binaryStr.charCodeAt(i);
+        const savedPath = await saveImageToFolder(dirHandle, d, imgFilename, bytes.buffer);
+        await appendToDaily(dirHandle, `![Clipboard image](./${savedPath})`, d);
+        await addRecentSave({ title: 'Clipboard image', filename: imgFilename, url: 'clipboard', saved_at: new Date().toISOString() });
+        return { success: true };
+      }
+
+      case 'save_clipboard_text': {
+        const dirHandle = await getDirHandle();
+        if (!dirHandle) throw new Error('No save folder configured');
+        const d = dateString();
+        await appendToDaily(dirHandle, message.text, d);
+        await addRecentSave({ title: message.text.slice(0, 60), filename: `${d}.md`, url: 'clipboard', saved_at: new Date().toISOString() });
         return { success: true };
       }
 

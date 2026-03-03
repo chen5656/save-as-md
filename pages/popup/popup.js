@@ -322,6 +322,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     pasteLabel.textContent = msg;
   }
 
+  const IDLE_LABEL = 'Paste a URL, image, or text to save it';
+
   async function handlePastedURL(url) {
     setPasteState('saving', 'Saving…');
     try {
@@ -331,21 +333,60 @@ document.addEventListener('DOMContentLoaded', async () => {
     } catch (e) {
       setPasteState('error', `Error: ${e.message}`);
     } finally {
-      setTimeout(() => setPasteState('', 'Paste a URL to save it'), 2500);
+      setTimeout(() => setPasteState('', IDLE_LABEL), 2500);
+    }
+  }
+
+  async function handlePastedImage(dataUrl, mimeType) {
+    setPasteState('saving', 'Saving image…');
+    try {
+      await sendMsg('save_clipboard_image', { dataUrl, mimeType });
+      setPasteState('saving', 'Image saved!');
+      await refresh();
+    } catch (e) {
+      setPasteState('error', `Error: ${e.message}`);
+    } finally {
+      setTimeout(() => setPasteState('', IDLE_LABEL), 2500);
+    }
+  }
+
+  async function handlePastedText(text) {
+    setPasteState('saving', 'Saving text…');
+    try {
+      await sendMsg('save_clipboard_text', { text });
+      setPasteState('saving', 'Text saved!');
+      await refresh();
+    } catch (e) {
+      setPasteState('error', `Error: ${e.message}`);
+    } finally {
+      setTimeout(() => setPasteState('', IDLE_LABEL), 2500);
     }
   }
 
   function onPaste(e) {
+    // 1. Clipboard image (screenshot, copied image)
+    const items = e.clipboardData?.items || [];
+    for (const item of items) {
+      if (item.type.startsWith('image/')) {
+        e.preventDefault();
+        const file = item.getAsFile();
+        if (!file) continue;
+        const reader = new FileReader();
+        reader.onload = async () => handlePastedImage(reader.result, item.type);
+        reader.readAsDataURL(file);
+        return;
+      }
+    }
+
+    // 2. Text: URLs or plain text
     const text = e.clipboardData.getData('text').trim();
-    // Support multiple URLs (one per line)
     const urls = text.split(/[\n\r]+/).map(l => l.trim()).filter(l => /^https?:\/\/[^\s]+/.test(l));
     if (urls.length > 0) {
       e.preventDefault();
       urls.reduce((chain, url) => chain.then(() => handlePastedURL(url)), Promise.resolve());
     } else if (text.length > 0) {
       e.preventDefault();
-      setPasteState('error', 'Not a valid URL');
-      setTimeout(() => setPasteState('', 'Paste a URL to save it'), 2000);
+      handlePastedText(text);
     }
   }
 

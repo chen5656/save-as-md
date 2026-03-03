@@ -13,3 +13,5 @@
         - update, we want file to save as is. and also a md file to record the metadata of the file, and name of the file
         - media-extraction-plan.md, update this file and include the change.
 [x] update README.md, it should be readable by  ai agent. have all the info for ai agent to run the project. remove unusefull info to save token for those agents.
+[x]         <div id="paste-label" class="paste-label">Paste a URL to save it</div>, here add function, so user can paste a url, or paste a screenshot image in clipboard, or paste a text.
+[x] we just tried this url, https://x.com/pirrer/status/2028477493993488504, it is x, and when open, it opens an article, but my code can't extract it. fix it.
