@@ -144,6 +144,15 @@ function isTwitterStatusURL(input) {
   }
 }
 
+function isTwitterArticleURL(input) {
+  try {
+    const u = new URL(input);
+    return isTwitterHostname(u.hostname) && /\/(?:i\/)?article\/\d+/.test(u.pathname);
+  } catch {
+    return false;
+  }
+}
+
 function extractTweetId(url) {
   const match = url.match(/\/status\/(\d+)/);
   return match ? match[1] : null;
@@ -408,8 +417,156 @@ async function fetchWithBackgroundTab(url) {
     });
 
     // X/Twitter posts are highly dynamic; wait for tweet content to render,
-    // then extract from live DOM directly.
-    if (isTwitterStatusURL(url)) {
+    // then extract from live DOM directly, or via GraphQL API if article.
+    if (isTwitterStatusURL(url) || isTwitterArticleURL(url)) {
+
+      // X GraphQL API Extraction for Articles from Live DOM Context
+      const xArticleResults = await chrome.scripting.executeScript({
+        target: { tabId: tab.id },
+        func: async () => {
+          try {
+            const articleIdMatch = window.location.pathname.match(/\/(?:i\/)?article\/(\d+)/);
+            const tweetIdMatch = window.location.pathname.match(/\/status(?:es)?\/(\d+)/);
+            const isArticlePage = !!articleIdMatch;
+            const id = (articleIdMatch && articleIdMatch[1]) || (tweetIdMatch && tweetIdMatch[1]);
+            if (!id) return null;
+
+            // X.com CSRF Cookie
+            const getCookie = (name) => {
+              const v = document.cookie.match('(^|;) ?' + name + '=([^;]*)(;|$)');
+              return v ? v[2] : null;
+            };
+            const ct0 = getCookie('ct0');
+            if (!ct0) return null; // Needs auth to use this API
+
+            const bearer = "Bearer AAAAAAAAAAAAAAAAAAAAANRILgAAAAAAnNwIzUejRCOuH5E6I8xnZz4puTs%3D1Zv7ttfk8LF81IUq16cHjhLTvJu4FA33AGWWjCpTnA";
+
+            // Try fetching TweetResultByRestId first as it can contain the article
+            const tweetUrl = new URL('https://x.com/i/api/graphql/HJ9lpOL-ZlOk5CkCw0JW6Q/TweetResultByRestId');
+            tweetUrl.searchParams.set('variables', JSON.stringify({
+              tweetId: id, withCommunity: false, includePromotedContent: false, withVoice: true
+            }));
+            tweetUrl.searchParams.set('features', JSON.stringify({
+              "creator_subscriptions_tweet_preview_api_enabled": true,
+              "articles_preview_enabled": true,
+              "responsive_web_twitter_article_tweet_consumption_enabled": true,
+              "tweet_with_visibility_results_prefer_gql_limited_actions_policy_enabled": true,
+              "longform_notetweets_rich_text_read_enabled": true,
+              "longform_notetweets_inline_media_enabled": true,
+              "responsive_web_graphql_skip_user_profile_image_extensions_enabled": false,
+              "responsive_web_graphql_timeline_navigation_enabled": true
+            }));
+
+            let res = await fetch(tweetUrl.toString(), {
+              headers: { 'authorization': bearer, 'x-csrf-token': ct0 }
+            });
+            let data = await res.json();
+
+            let article = null;
+            let result = data?.data?.tweetResult?.result || data?.data?.tweet_result?.result || data?.data?.tweet_result;
+            if (result?.__typename === 'TweetWithVisibilityResults') result = result.tweet;
+            article = result?.article?.article_results?.result || result?.legacy?.article_results?.result;
+
+            if (!article && isArticlePage) {
+              const articleUrl = new URL('https://x.com/i/api/graphql/id8pHQbQi7eZ6P9mA1th1Q/ArticleEntityResultByRestId');
+              articleUrl.searchParams.set('variables', JSON.stringify({ articleEntityId: id }));
+              articleUrl.searchParams.set('features', JSON.stringify({
+                "profile_label_improvements_pcf_label_in_post_enabled": true,
+                "rweb_tipjar_consumption_enabled": true,
+                "responsive_web_graphql_skip_user_profile_image_extensions_enabled": false,
+                "responsive_web_graphql_timeline_navigation_enabled": true
+              }));
+              res = await fetch(articleUrl.toString(), { headers: { 'authorization': bearer, 'x-csrf-token': ct0 } });
+              data = await res.json();
+              article = data?.data?.article_result_by_rest_id?.result || data?.data?.article_entity_result?.result;
+            }
+
+            if (!article) return null;
+
+            // Found an Article Payload. Format natively.
+            const title = typeof article.title === 'string' ? article.title.trim() : '';
+            const blocks = article.content_state?.blocks || [];
+            if (!blocks.length && !article.plain_text && !article.preview_text) return null;
+
+            let content = '';
+            if (blocks.length > 0) {
+              const lines = [];
+              let inCodeBlock = false;
+              for (const b of blocks) {
+                const text = (b.text || '').replace(/\s+$/, '');
+                if (!text) { lines.push(''); continue; }
+                const type = b.type || 'unstyled';
+
+                if (type === 'code-block') {
+                  if (!inCodeBlock) { lines.push('```'); inCodeBlock = true; }
+                  lines.push(text);
+                } else {
+                  if (inCodeBlock) { lines.push('```'); inCodeBlock = false; }
+                  if (type.startsWith('header-')) {
+                    const level = { 'header-one': 1, 'header-two': 2, 'header-three': 3, 'header-four': 4 }[type] || 1;
+                    lines.push('#'.repeat(level) + ' ' + text);
+                  } else if (type === 'unordered-list-item') {
+                    lines.push('- ' + text);
+                  } else if (type === 'ordered-list-item') {
+                    lines.push('1. ' + text);
+                  } else if (type === 'blockquote') {
+                    lines.push('> ' + text.replace(/\n/g, '\n> '));
+                  } else if (!/^XIMGPH_\d+$/.test(text.trim())) {
+                    lines.push(text);
+                  }
+                }
+              }
+              if (inCodeBlock) lines.push('```');
+              content = lines.join('\n\n').replace(/\n{3,}/g, '\n\n');
+            } else if (article.plain_text) {
+              content = article.plain_text;
+            } else if (article.preview_text) {
+              content = article.preview_text;
+            }
+
+            // Look for Media
+            const mediaObj = {}; // Object of media id -> url
+            const mediaList = [];
+            for (const media of (article.media_entities || [])) {
+              let url = media.media_info?.original_img_url;
+              if (!url) {
+                const variants = media.media_info?.variants || [];
+                const mp4 = variants.filter(v => v.content_type?.includes('video')).sort((a, b) => (b.bit_rate || 0) - (a.bit_rate || 0))[0];
+                url = mp4?.url || variants[0]?.url;
+              }
+              if (url && media.media_id) mediaObj[media.media_id] = url;
+            }
+
+            for (const key in article.content_state?.entityMap || {}) {
+              const e = article.content_state.entityMap[key];
+              if (e && e.value && (e.value.type === 'IMAGE' || e.value.type === 'MEDIA')) {
+                const mediaItems = e.value.data?.mediaItems || [];
+                for (const m of mediaItems) {
+                  const id = m.mediaId || m.media_id;
+                  if (id && mediaObj[id]) mediaList.push(mediaObj[id]);
+                }
+              }
+            }
+
+            if (mediaList.length > 0) {
+              content += '\n\n## Media\n\n' + [...new Set(mediaList)].map(u => `![](${u})`).join('\n');
+            }
+
+            return {
+              title: title || 'X Article',
+              content: content.trim(),
+              markdownReady: true
+            };
+          } catch (e) {
+            return null; // Fall back to DOM scraping
+          }
+        }
+      });
+
+      if (xArticleResults && xArticleResults[0]?.result) {
+        return xArticleResults[0].result;
+      }
+
       // Poll DOM until tweet content appears (X.com loads asynchronously after 'complete')
       const MAX_POLL_MS = 12000;
       const POLL_INTERVAL_MS = 500;
