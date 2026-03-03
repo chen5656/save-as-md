@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Markdown Vault — Settings</title>
+  <link rel="stylesheet" href="settings.css">
+</head>
+
+<body>
+  <div class="page">
+    <header class="page-header">
+      <h1>⚙️ Settings</h1>
+      <p class="header-sub">Markdown Vault</p>
+    </header>
+
+    <!-- Save indicator -->
+    <div id="save-toast" class="toast hidden">✓ Settings saved</div>
+
+    <div class="content">
+
+      <!-- ── Telegram Bot ── -->
+      <section class="card">
+        <h2 class="card-title">🤖 Telegram Bot</h2>
+
+        <div class="field-group">
+          <label class="field-label" for="bot-token">Bot Token</label>
+          <div class="token-row">
+            <input type="password" id="bot-token" class="input" placeholder="123456789:AAF…" autocomplete="off"
+              spellcheck="false">
+            <button id="show-token-btn" class="btn btn-ghost btn-sm">👁</button>
+          </div>
+          <div id="token-status" class="field-status"></div>
+        </div>
+
+        <div class="field-group">
+          <div class="setting-row">
+            <div>
+              <div class="setting-label">Connected as</div>
+              <div id="bot-username-display" class="setting-value muted">Not connected</div>
+            </div>
+            <button id="verify-token-btn" class="btn btn-secondary btn-sm">Verify</button>
+          </div>
+        </div>
+
+        <div class="field-group">
+          <label class="field-label" for="update-offset">Telegram Offset (last_update_id)</label>
+          <input type="number" id="update-offset" class="input input-sm" min="0" placeholder="0">
+          <div class="field-hint">Only change this if you want to reprocess old messages. Set to 0 to reset.</div>
+        </div>
+      </section>
+
+      <!-- ── Save Folder ── -->
+      <section class="card" id="folder">
+        <h2 class="card-title">📁 Save Folder</h2>
+
+        <div id="current-folder-display" class="folder-display hidden">
+          <span class="folder-icon-sm">📂</span>
+          <span id="current-folder-name" class="folder-name-text"></span>
+          <span id="folder-status-icon" class="folder-status-icon" title=""></span>
+        </div>
+
+        <button id="choose-folder-btn" class="btn btn-secondary">
+          📂 Choose Folder
+        </button>
+
+        <div id="folder-msg" class="field-status"></div>
+      </section>
+
+      <!-- ── Polling ── -->
+      <section class="card">
+        <h2 class="card-title">⏱ Polling</h2>
+
+        <div class="field-group">
+          <label class="field-label">Poll Interval</label>
+          <div class="interval-grid">
+            <label class="radio-option">
+              <input type="radio" name="interval" value="60"> <span>1 min</span>
+            </label>
+            <label class="radio-option">
+              <input type="radio" name="interval" value="180"> <span>3 min</span>
+            </label>
+            <label class="radio-option">
+              <input type="radio" name="interval" value="300"> <span>5 min</span>
+            </label>
+            <label class="radio-option">
+              <input type="radio" name="interval" value="1800"> <span>30 min</span>
+            </label>
+            <label class="radio-option">
+              <input type="radio" name="interval" value="3600"> <span>1 hour</span>
+            </label>
+          </div>
+        </div>
+      </section>
+
+      <!-- ── Browser Integration ── -->
+      <section class="card">
+        <h2 class="card-title">🖱 Browser Integration</h2>
+
+        <div class="field-group">
+          <div class="setting-row">
+            <div>
+              <div class="setting-label">Right-click Context Menu</div>
+              <div class="setting-hint">Add "Save to Markdown Vault" to the right-click menu on pages and links.</div>
+            </div>
+            <label class="toggle">
+              <input type="checkbox" id="context-menu-enabled">
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+        </div>
+      </section>
+
+      <!-- ── Markdown Output ── -->
+      <section class="card">
+        <h2 class="card-title">📝 Markdown Output</h2>
+
+        <div class="field-group">
+          <div class="setting-row">
+            <div>
+              <div class="setting-label">YAML Frontmatter</div>
+              <div class="setting-hint">Add title, URL, date metadata at the top of each file</div>
+            </div>
+            <label class="toggle">
+              <input type="checkbox" id="include-frontmatter">
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+        </div>
+
+        <div class="field-group">
+          <div class="setting-row">
+            <div>
+              <div class="setting-label">GitHub-Flavored Markdown</div>
+              <div class="setting-hint">Tables, strikethrough, task lists (GFM). Disable for plain CommonMark.</div>
+            </div>
+            <label class="toggle">
+              <input type="checkbox" id="use-gfm">
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+        </div>
+
+        <div class="field-group">
+          <label class="field-label" for="file-naming">File Naming Pattern</label>
+          <select id="file-naming" class="input select">
+            <option value="YYYY-MM-DD-slug">YYYY-MM-DD-page-title-slug.md (default)</option>
+            <option value="slug-YYYY-MM-DD">page-title-slug-YYYY-MM-DD.md</option>
+            <option value="slug">page-title-slug.md (no date)</option>
+          </select>
+        </div>
+      </section>
+
+      <!-- ── Connection History ── -->
+      <section class="card">
+        <h2 class="card-title">📡 Connection History</h2>
+
+        <div id="history-list" class="history-list">
+          <div class="empty-state">No disconnects recorded</div>
+        </div>
+
+        <button id="clear-history-btn" class="btn btn-danger-ghost btn-sm" style="margin-top: 12px;">
+          🗑 Clear History
+        </button>
+      </section>
+
+      <!-- ── Save button ── -->
+      <div class="actions">
+        <button id="save-btn" class="btn btn-primary btn-lg">Save Settings</button>
+        <button id="reset-btn" class="btn btn-ghost">Reset to Defaults</button>
+      </div>
+
+      <!-- ── Danger zone ── -->
+      <section class="card danger-card">
+        <h2 class="card-title">⚠️ Reset</h2>
+        <p class="danger-text">Restart the setup wizard. This clears your bot token and folder selection.</p>
+        <button id="reset-setup-btn" class="btn btn-danger">Reset Setup</button>
+      </section>
+
+    </div>
+  </div>
+
+  <script src="settings.js"></script>
+</body>
+
+</html>
