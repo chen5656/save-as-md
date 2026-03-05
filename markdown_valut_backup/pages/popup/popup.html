@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Markdown Vault</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+
+<body>
+  <!-- Setup required state -->
+  <div id="setup-needed" class="screen hidden">
+    <div class="setup-icon">📥</div>
+    <h2>Setup Required</h2>
+    <p>Connect your Telegram bot to start saving pages.</p>
+    <button id="open-onboarding" class="btn btn-primary">Start Setup</button>
+  </div>
+
+  <!-- Permission needed state -->
+  <div id="permission-needed" class="screen hidden">
+    <div class="setup-icon">📁</div>
+    <h2>Folder Access Needed</h2>
+    <p id="folder-access-desc"></p>
+    <button id="regrant-permission" class="btn btn-warning">Re-grant Folder Access</button>
+  </div>
+
+  <!-- Main popup state -->
+  <div id="main" class="screen hidden">
+
+    <!-- Header -->
+    <div class="header">
+      <div class="bot-info">
+        <span class="status-dot" id="status-dot"></span>
+        <span id="bot-name" class="bot-name">@…</span>
+      </div>
+      <a href="#" id="open-settings" class="settings-link" title="Settings">⚙️</a>
+    </div>
+
+    <!-- Disconnect warning banner -->
+    <div id="disconnect-banner" class="warning-banner hidden">
+      <div class="warning-icon">⚠️</div>
+      <div class="warning-content">
+        <div class="warning-title">Extended Disconnect</div>
+        <div id="warning-text" class="warning-text"></div>
+      </div>
+      <button id="dismiss-warning" class="dismiss-btn" title="Dismiss">✕</button>
+    </div>
+
+    <!-- Error banner -->
+    <div id="error-banner" class="error-banner hidden">
+      <span class="error-icon">❌</span>
+      <span id="error-text"></span>
+    </div>
+
+    <!-- Stats row -->
+    <div class="stats-row">
+      <div class="stat">
+        <div class="stat-label">Last poll</div>
+        <div id="last-poll" class="stat-value">Never</div>
+      </div>
+      <div class="stat">
+        <div class="stat-label">Next poll</div>
+        <div id="next-poll" class="stat-value">—</div>
+      </div>
+      <div class="stat">
+        <div class="stat-label">Pending retries</div>
+        <div id="pending-count" class="stat-value">0</div>
+      </div>
+    </div>
+
+    <!-- Controls -->
+    <div class="controls">
+      <button id="refresh-now" class="btn btn-primary btn-sm">↻ Refresh Now</button>
+      <button id="toggle-polling" class="btn btn-sm btn-stop">■ Stop</button>
+    </div>
+
+    <!-- Interval selector -->
+    <div class="interval-row">
+      <span class="interval-label">Poll every:</span>
+      <div class="interval-buttons">
+        <button class="interval-btn" data-seconds="60">1m</button>
+        <button class="interval-btn" data-seconds="180">3m</button>
+        <button class="interval-btn active" data-seconds="300">5m</button>
+        <button class="interval-btn" data-seconds="1800">30m</button>
+        <button class="interval-btn" data-seconds="3600">1h</button>
+      </div>
+    </div>
+
+    <!-- Paste URL zone -->
+    <div class="section">
+      <div id="paste-zone" class="paste-zone" tabindex="0">
+        <div id="paste-label" class="paste-label">Paste a URL, image, or text to save it</div>
+      </div>
+    </div>
+
+    <!-- Recent saves -->
+    <div class="section">
+      <div class="section-title">Recent Saves</div>
+      <div id="recent-saves-list" class="recent-list">
+        <div class="empty-state">No saves yet</div>
+      </div>
+    </div>
+
+    <!-- Connection history -->
+    <div id="history-section" class="section hidden">
+      <div class="section-title">Connection History</div>
+      <div id="history-list" class="history-list"></div>
+    </div>
+
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+
+</html>
