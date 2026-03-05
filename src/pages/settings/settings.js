@@ -124,6 +124,7 @@ async function loadSettings() {
   // Toggles
   $('include-frontmatter').checked = state.include_frontmatter !== false;
   $('use-gfm').checked = state.use_gfm !== false;
+  $('send-save-ack').checked = state.send_save_ack === true;
   $('context-menu-enabled').checked = state.context_menu_enabled !== false;
 
   // File naming
@@ -197,6 +198,7 @@ async function saveSettings() {
     // Toggles
     settings.include_frontmatter = $('include-frontmatter').checked;
     settings.use_gfm = $('use-gfm').checked;
+    settings.send_save_ack = $('send-save-ack').checked;
     settings.context_menu_enabled = $('context-menu-enabled').checked;
 
     // File naming
@@ -299,6 +301,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       settings: {
         include_frontmatter: true,
         use_gfm: true,
+        send_save_ack: false,
         file_naming_pattern: 'YYYY-MM-DD-slug',
         poll_interval: 300,
         context_menu_enabled: true,

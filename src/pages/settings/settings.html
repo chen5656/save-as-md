@@ -49,6 +49,19 @@
           <input type="number" id="update-offset" class="input input-sm" min="0" placeholder="0">
           <div class="field-hint">Only change this if you want to reprocess old messages. Set to 0 to reset.</div>
         </div>
+
+        <div class="field-group">
+          <div class="setting-row">
+            <div>
+              <div class="setting-label">Send Save Ack</div>
+              <div class="setting-hint">Reply in Telegram after each successful save with the session counter.</div>
+            </div>
+            <label class="toggle">
+              <input type="checkbox" id="send-save-ack">
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+        </div>
       </section>
 
       <!-- ── Save Folder ── -->

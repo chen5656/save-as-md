@@ -163,7 +163,7 @@ async function handleDirectImage(url, dirHandle, settings, fetchResult) {
     const timestamp = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
     const entry = `**${timestamp}** — Image too large to save (${sizeMB} MB): ${sanitizeUrlForDisplay(url)}`;
     await appendToDaily(dirHandle, entry, date);
-    return { title: 'Image', filename: `${date}.md` };
+    return { title: 'Image', filename: `${date}.md`, saved: false };
   }
 
   // Determine extension
@@ -189,5 +189,5 @@ async function handleDirectImage(url, dirHandle, settings, fetchResult) {
   const entry = `**${timestamp}** — Image from URL: ${sanitizeUrlForDisplay(url)}\n\n![Image](./${savedPath})`;
   await appendToDaily(dirHandle, entry, date);
 
-  return { title: 'Image', filename: `${date}.md` };
+  return { title: 'Image', filename: `${date}.md`, saved: true };
 }

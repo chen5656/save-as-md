@@ -23,6 +23,15 @@ const RETRY_DELAYS = [30, 120, 300]; // seconds between attempts
 const DISCONNECT_THRESHOLD = 24 * 60 * 60 * 1000; // 24h in ms
 const MIN_ARTICLE_LENGTH = 500; // chars; below this, use background tab fallback
 const MAX_PAGE_SIZE = 5 * 1024 * 1024; // 5MB max for text page fetch
+const SESSION_MAX_TRACKED_CHATS = 50;
+const ACK_DEDUPE_MAX_KEYS = 500;
+const ACK_DEDUPE_TTL_MS = 6 * 60 * 60 * 1000; // 6h
+const SESSION_CHAT_COUNTERS_KEY = 'session_chat_save_counts';
+const SESSION_ACK_DEDUPE_KEY = 'session_ack_dedupe';
+const _sessionFallback = {
+  [SESSION_CHAT_COUNTERS_KEY]: {},
+  [SESSION_ACK_DEDUPE_KEY]: {},
+};
 
 // ─── IndexedDB (for FileSystemDirectoryHandle) ────────────────────────────────
 function openDB() {
@@ -63,6 +72,35 @@ async function setStorage(obj) {
   return chrome.storage.local.set(obj);
 }
 
+function getSessionStorageArea() {
+  return chrome.storage.session || null;
+}
+
+async function getSessionState(key) {
+  const area = getSessionStorageArea();
+  if (!area) return _sessionFallback[key] || {};
+
+  try {
+    const data = await area.get([key]);
+    return data[key] || {};
+  } catch (err) {
+    console.warn('[markdown-vault] session storage read failed:', err);
+    return _sessionFallback[key] || {};
+  }
+}
+
+async function setSessionState(key, value) {
+  _sessionFallback[key] = value;
+  const area = getSessionStorageArea();
+  if (!area) return;
+
+  try {
+    await area.set({ [key]: value });
+  } catch (err) {
+    console.warn('[markdown-vault] session storage write failed:', err);
+  }
+}
+
 // ─── Telegram API ─────────────────────────────────────────────────────────────
 async function telegramCall(token, method, params = {}) {
   const resp = await fetch(`${TELEGRAM_BASE}${token}/${method}`, {
@@ -101,6 +139,89 @@ async function getUpdates(token, offset) {
 
 async function getTelegramFileInfo(token, fileId) {
   return telegramCall(token, 'getFile', { file_id: fileId });
+}
+
+async function sendTelegramMessage(token, chatId, text, replyToMessageId) {
+  const params = {
+    chat_id: chatId,
+    text,
+    disable_web_page_preview: true,
+  };
+  if (replyToMessageId !== undefined && replyToMessageId !== null) {
+    params.reply_to_message_id = replyToMessageId;
+  }
+  return telegramCall(token, 'sendMessage', params);
+}
+
+async function incrementSessionSaveCount(chatId) {
+  const chatKey = String(chatId);
+  const now = Date.now();
+  const counters = await getSessionState(SESSION_CHAT_COUNTERS_KEY);
+
+  const current = counters[chatKey]?.count || 0;
+  counters[chatKey] = { count: current + 1, touchedAt: now };
+
+  const entries = Object.entries(counters);
+  if (entries.length > SESSION_MAX_TRACKED_CHATS) {
+    entries.sort((a, b) => (a[1]?.touchedAt || 0) - (b[1]?.touchedAt || 0));
+    const over = entries.length - SESSION_MAX_TRACKED_CHATS;
+    for (let i = 0; i < over; i++) {
+      delete counters[entries[i][0]];
+    }
+  }
+
+  await setSessionState(SESSION_CHAT_COUNTERS_KEY, counters);
+  return counters[chatKey].count;
+}
+
+async function isSaveAckDuplicate(dedupeKey) {
+  const now = Date.now();
+  const dedupe = await getSessionState(SESSION_ACK_DEDUPE_KEY);
+  let changed = false;
+
+  for (const [key, ts] of Object.entries(dedupe)) {
+    if (!ts || now - ts > ACK_DEDUPE_TTL_MS) {
+      delete dedupe[key];
+      changed = true;
+    }
+  }
+
+  if (dedupe[dedupeKey]) {
+    if (changed) await setSessionState(SESSION_ACK_DEDUPE_KEY, dedupe);
+    return true;
+  }
+
+  dedupe[dedupeKey] = now;
+  const entries = Object.entries(dedupe);
+  if (entries.length > ACK_DEDUPE_MAX_KEYS) {
+    entries.sort((a, b) => (a[1] || 0) - (b[1] || 0));
+    const over = entries.length - ACK_DEDUPE_MAX_KEYS;
+    for (let i = 0; i < over; i++) {
+      delete dedupe[entries[i][0]];
+    }
+  }
+
+  await setSessionState(SESSION_ACK_DEDUPE_KEY, dedupe);
+  return false;
+}
+
+async function maybeSendSaveAck({ token, messageCtx, sendSaveAck, savedLabel }) {
+  if (!sendSaveAck || !token || !messageCtx) return;
+  if (messageCtx.source !== 'telegram') return;
+  if (messageCtx.chat_id === undefined || messageCtx.update_id === undefined) return;
+
+  const dedupeKey = `${messageCtx.chat_id}:${messageCtx.update_id}:${savedLabel || 'saved'}`;
+  const duplicate = await isSaveAckDuplicate(dedupeKey);
+  if (duplicate) return;
+
+  const sessionCount = await incrementSessionSaveCount(messageCtx.chat_id);
+  const ackText = `✅ Saved\n📊 Session saved count: ${sessionCount}`;
+
+  try {
+    await sendTelegramMessage(token, messageCtx.chat_id, ackText, messageCtx.message_id);
+  } catch (err) {
+    console.warn('[markdown-vault] Failed to send save ack:', err);
+  }
 }
 
 // ─── URL Detection ────────────────────────────────────────────────────────────
@@ -1003,7 +1124,7 @@ async function clearPendingRetry(url) {
 async function getSettings() {
   return getStorage([
     'bot_token', 'include_frontmatter', 'use_gfm', 'file_naming_pattern',
-    'poll_interval', 'bot_username',
+    'poll_interval', 'bot_username', 'send_save_ack',
   ]);
 }
 
@@ -1025,7 +1146,16 @@ async function processURLWithRetry(url, attemptIndex, messageCtx, settings) {
     return;
   }
 
-  const { bot_token, include_frontmatter = true, use_gfm = true } = settings;
+  const { bot_token, include_frontmatter = true, use_gfm = true, send_save_ack = false } = settings;
+  const urlAckLabel = `url:${url}`;
+  const maybeAckForUrlSave = async () => {
+    await maybeSendSaveAck({
+      token: bot_token,
+      messageCtx,
+      sendSaveAck: send_save_ack,
+      savedLabel: urlAckLabel,
+    });
+  };
   const savedAt = localIsoString();
 
   try {
@@ -1035,6 +1165,7 @@ async function processURLWithRetry(url, attemptIndex, messageCtx, settings) {
       console.log('[markdown-vault] YouTube detected:', url);
       const result = await handleYouTube(url, dirHandle, settings);
       await notifyAndRecord(result.title, result.filename, url, savedAt);
+      await maybeAckForUrlSave();
       await clearPendingRetry(url);
       return;
     }
@@ -1054,7 +1185,7 @@ async function processURLWithRetry(url, attemptIndex, messageCtx, settings) {
           url, error: fetchErr.message, savedAt, includeFrontmatter: include_frontmatter,
         });
         const filename = `${dateString()}-error-${slugify(url.replace(/https?:\/\//, '').slice(0, 40))}.md`;
-        const saved = await saveMarkdownFile(dirHandle, filename, errorMd);
+        await saveMarkdownFile(dirHandle, filename, errorMd);
         chrome.notifications.create({
           type: 'basic', iconUrl: 'docs/icon_64.png',
           title: 'Markdown Vault — Save Failed',
@@ -1094,6 +1225,7 @@ async function processURLWithRetry(url, attemptIndex, messageCtx, settings) {
       console.log('[markdown-vault] RSS feed detected:', effectiveUrl);
       const result = await handleRss(effectiveUrl, dirHandle, settings, html);
       await notifyAndRecord(result.title, result.filename, url, savedAt);
+      await maybeAckForUrlSave();
       await clearPendingRetry(url);
       return;
     }
@@ -1105,6 +1237,7 @@ async function processURLWithRetry(url, attemptIndex, messageCtx, settings) {
         console.log('[markdown-vault] PDF detected:', effectiveUrl);
         const result = await handlePdf(effectiveUrl, dirHandle, settings, fetchResult);
         await notifyAndRecord(result.title, result.filename, url, savedAt);
+        await maybeAckForUrlSave();
         await clearPendingRetry(url);
         return;
       }
@@ -1113,6 +1246,7 @@ async function processURLWithRetry(url, attemptIndex, messageCtx, settings) {
         console.log('[markdown-vault] Audio file detected:', effectiveUrl);
         const result = await handleDirectMedia(effectiveUrl, dirHandle, settings, fetchResult, 'audio');
         await notifyAndRecord(result.title, result.filename, url, savedAt);
+        await maybeAckForUrlSave();
         await clearPendingRetry(url);
         return;
       }
@@ -1121,6 +1255,7 @@ async function processURLWithRetry(url, attemptIndex, messageCtx, settings) {
         console.log('[markdown-vault] Video file detected:', effectiveUrl);
         const result = await handleDirectMedia(effectiveUrl, dirHandle, settings, fetchResult, 'video');
         await notifyAndRecord(result.title, result.filename, url, savedAt);
+        await maybeAckForUrlSave();
         await clearPendingRetry(url);
         return;
       }
@@ -1128,6 +1263,9 @@ async function processURLWithRetry(url, attemptIndex, messageCtx, settings) {
       if (postType === 'direct-image') {
         console.log('[markdown-vault] Image URL detected:', effectiveUrl);
         const result = await handleDirectImage(effectiveUrl, dirHandle, settings, fetchResult);
+        if (result?.saved !== false) {
+          await maybeAckForUrlSave();
+        }
         await clearPendingRetry(url);
         return;
       }
@@ -1190,6 +1328,7 @@ async function processURLWithRetry(url, attemptIndex, messageCtx, settings) {
         message: `Downloaded: ${binaryFilename}`,
       });
       await addRecentSave({ title: basename, filename: savedMdName, url, saved_at: savedAt });
+      await maybeAckForUrlSave();
       await clearPendingRetry(url);
       return;
     }
@@ -1199,6 +1338,7 @@ async function processURLWithRetry(url, attemptIndex, messageCtx, settings) {
       console.log('[markdown-vault] Podcast page detected:', effectiveUrl);
       const result = await handlePodcast(effectiveUrl, html, dirHandle, settings);
       await notifyAndRecord(result.title, result.filename, url, savedAt);
+      await maybeAckForUrlSave();
       await clearPendingRetry(url);
       return;
     }
@@ -1341,6 +1481,7 @@ async function processURLWithRetry(url, attemptIndex, messageCtx, settings) {
     });
 
     await addRecentSave({ title, filename: savedName, url, saved_at: savedAt });
+    await maybeAckForUrlSave();
     await clearPendingRetry(url);
 
   } catch (err) {
@@ -1363,14 +1504,14 @@ async function processURLWithRetry(url, attemptIndex, messageCtx, settings) {
 }
 
 // ─── Text Message Processing ──────────────────────────────────────────────────
-async function processTextMessage(text, date, dirHandle, includeFrontmatter) {
+async function processTextMessage(text, date, dirHandle) {
   const timestamp = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
   const entry = `**${timestamp}** — ${text}`;
   await appendToDaily(dirHandle, entry, date);
 }
 
 // ─── Image Message Processing ─────────────────────────────────────────────────
-async function processImageMessage(message, token, date, dirHandle, includeFrontmatter) {
+async function processImageMessage(message, token, date, dirHandle) {
   try {
     // Get the largest photo variant
     const photos = message.photo;
@@ -1383,12 +1524,12 @@ async function processImageMessage(message, token, date, dirHandle, includeFront
         const sizeMB = Math.round(message.document.file_size / 1024 / 1024);
         const entry = `*Image too large to download (${sizeMB}MB — Telegram limit is 20MB)*`;
         await appendToDaily(dirHandle, entry, date);
-        return;
+        return false;
       }
       fileId = message.document.file_id;
       mimeExt = message.document.mime_type.split('/')[1] || 'jpg';
     } else {
-      return;
+      return false;
     }
 
     const fileInfo = await getTelegramFileInfo(token, fileId);
@@ -1406,10 +1547,12 @@ async function processImageMessage(message, token, date, dirHandle, includeFront
     const caption = message.caption ? `\n\n${message.caption}` : '';
     const entry = `![Image](./${savedPath})${caption}`;
     await appendToDaily(dirHandle, entry, date);
+    return true;
   } catch (err) {
     console.error('[markdown-vault] Image processing error:', err);
     const entry = `*Failed to save image: ${err.message}*`;
     await appendToDaily(dirHandle, entry, date);
+    return false;
   }
 }
 
@@ -1417,14 +1560,14 @@ async function processImageMessage(message, token, date, dirHandle, includeFront
 async function processDocumentMessage(message, token, date, dirHandle) {
   try {
     const doc = message.document;
-    if (!doc?.file_id) return;
+    if (!doc?.file_id) return false;
 
     // Check Telegram's 20MB download limit
     if (doc.file_size && doc.file_size > 20 * 1024 * 1024) {
       const sizeMB = Math.round(doc.file_size / 1024 / 1024);
       const entry = `*Received document "${doc.file_name || 'unnamed'}" (${sizeMB}MB) — too large to download (Telegram limit is 20MB)*`;
       await appendToDaily(dirHandle, entry, date);
-      return;
+      return false;
     }
 
     const fileInfo = await getTelegramFileInfo(token, doc.file_id);
@@ -1451,10 +1594,12 @@ async function processDocumentMessage(message, token, date, dirHandle) {
     const caption = message.caption ? `\n\n${message.caption}` : '';
     const entry = `**Document saved:** [${filename}](./${date}/${filename})${caption}`;
     await appendToDaily(dirHandle, entry, date);
+    return true;
   } catch (err) {
     console.error('[markdown-vault] Document processing error:', err);
     const entry = `*Failed to save document: ${err.message}*`;
     await appendToDaily(dirHandle, entry, date);
+    return false;
   }
 }
 
@@ -1464,7 +1609,21 @@ async function processUpdate(update, token, settings) {
   if (!message) return;
 
   const date = dateString();
-  const { include_frontmatter = true } = settings;
+  const { send_save_ack = false } = settings;
+  const messageCtx = {
+    source: 'telegram',
+    chat_id: message.chat?.id,
+    message_id: message.message_id,
+    update_id: update.update_id,
+  };
+  const maybeAckForMessage = async savedLabel => {
+    await maybeSendSaveAck({
+      token,
+      messageCtx,
+      sendSaveAck: send_save_ack,
+      savedLabel,
+    });
+  };
 
   // Detect URLs in message
   const urls = extractURLsFromMessage(message);
@@ -1472,26 +1631,32 @@ async function processUpdate(update, token, settings) {
   if (urls.length > 0) {
     // Process each URL (most messages have 1)
     for (const url of urls) {
-      await processURLWithRetry(url, 0, { message_id: message.message_id, chat_id: message.chat.id }, settings);
+      await processURLWithRetry(url, 0, messageCtx, settings);
     }
   } else if (message.photo || message.document?.mime_type?.startsWith('image/')) {
     // Image message
     const dirHandle = await getDirHandle();
     if (dirHandle) {
-      await processImageMessage(message, token, date, dirHandle, include_frontmatter);
+      const saved = await processImageMessage(message, token, date, dirHandle);
+      if (saved) await maybeAckForMessage('image');
     }
   } else if (message.document) {
     // Non-image document (PDF, etc.) — save the file directly
     const dirHandle = await getDirHandle();
     if (dirHandle) {
-      await processDocumentMessage(message, token, date, dirHandle);
+      const saved = await processDocumentMessage(message, token, date, dirHandle);
+      if (saved) {
+        const label = `document:${message.document?.file_unique_id || message.document?.file_id || 'file'}`;
+        await maybeAckForMessage(label);
+      }
     }
   } else if (message.text || message.caption) {
     // Plain text — append to daily file
     const text = message.text || message.caption;
     const dirHandle = await getDirHandle();
     if (dirHandle) {
-      await processTextMessage(text, date, dirHandle, include_frontmatter);
+      await processTextMessage(text, date, dirHandle);
+      await maybeAckForMessage('text');
     }
   } else if (message.sticker || message.voice || message.video_note || message.video || message.audio || message.location || message.contact) {
     // Unsupported message types — log to daily file
@@ -1619,6 +1784,7 @@ chrome.runtime.onInstalled.addListener(async details => {
     poll_interval: DEFAULT_POLL_INTERVAL,
     include_frontmatter: true,
     use_gfm: true,
+    send_save_ack: false,
     file_naming_pattern: 'YYYY-MM-DD-slug',
     recent_saves: [],
     connection_warnings: [],
@@ -1704,7 +1870,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           'connection_warnings', 'is_polling_active', 'poll_interval',
           'setup_complete', 'has_disconnect_warning', 'fs_permission_needed',
           'folder_status', 'last_telegram_error', 'pending_retries', 'last_update_id',
-          'include_frontmatter', 'use_gfm', 'file_naming_pattern', 'context_menu_enabled',
+          'include_frontmatter', 'use_gfm', 'send_save_ack', 'file_naming_pattern', 'context_menu_enabled',
         ]);
         // Don't expose raw token — just whether one is set
         const hasToken = !!state.bot_token;
@@ -1739,6 +1905,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         if (settings.bot_username !== undefined) toSave.bot_username = settings.bot_username;
         if (settings.include_frontmatter !== undefined) toSave.include_frontmatter = settings.include_frontmatter;
         if (settings.use_gfm !== undefined) toSave.use_gfm = settings.use_gfm;
+        if (settings.send_save_ack !== undefined) toSave.send_save_ack = settings.send_save_ack;
         if (settings.file_naming_pattern !== undefined) toSave.file_naming_pattern = settings.file_naming_pattern;
         if (settings.poll_interval !== undefined) {
           toSave.poll_interval = settings.poll_interval;
