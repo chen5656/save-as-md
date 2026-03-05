@@ -665,8 +665,32 @@ function slugify(text, maxLen = 60) {
     .slice(0, maxLen) || 'untitled';
 }
 
+function pad2(num) {
+  return String(num).padStart(2, '0');
+}
+
 function dateString(date = new Date()) {
-  return date.toISOString().slice(0, 10);
+  const year = date.getFullYear();
+  const month = pad2(date.getMonth() + 1);
+  const day = pad2(date.getDate());
+  return `${year}-${month}-${day}`;
+}
+
+function localIsoString(date = new Date()) {
+  const year = date.getFullYear();
+  const month = pad2(date.getMonth() + 1);
+  const day = pad2(date.getDate());
+  const hours = pad2(date.getHours());
+  const minutes = pad2(date.getMinutes());
+  const seconds = pad2(date.getSeconds());
+
+  const tzOffsetMins = -date.getTimezoneOffset();
+  const tzSign = tzOffsetMins >= 0 ? '+' : '-';
+  const tzAbs = Math.abs(tzOffsetMins);
+  const tzHours = pad2(Math.floor(tzAbs / 60));
+  const tzMinutes = pad2(tzAbs % 60);
+
+  return `${year}-${month}-${day}T${hours}:${minutes}:${seconds}${tzSign}${tzHours}:${tzMinutes}`;
 }
 
 async function getUniqueFileHandle(dirHandle, filename) {
@@ -869,8 +893,8 @@ async function checkAndHandleDisconnect() {
 
     const warning = {
       id: Date.now(),
-      start: startDt.toISOString(),
-      end: endDt.toISOString(),
+      start: localIsoString(startDt),
+      end: localIsoString(endDt),
       duration: durationStr,
       acknowledged: false,
     };
@@ -1002,7 +1026,7 @@ async function processURLWithRetry(url, attemptIndex, messageCtx, settings) {
   }
 
   const { bot_token, include_frontmatter = true, use_gfm = true } = settings;
-  const savedAt = new Date().toISOString();
+  const savedAt = localIsoString();
 
   try {
     // ── Pre-fetch routing: YouTube (does its own fetch) ──────────────────────
@@ -1529,7 +1553,7 @@ async function poll() {
       }
 
       // Update last successful poll time
-      await setStorage({ last_successful_poll: new Date().toISOString() });
+      await setStorage({ last_successful_poll: localIsoString() });
       await updateBadge();
 
     } catch (err) {
@@ -1762,7 +1786,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         for (let i = 0; i < binaryStr.length; i++) bytes[i] = binaryStr.charCodeAt(i);
         const savedPath = await saveImageToFolder(dirHandle, d, imgFilename, bytes.buffer);
         await appendToDaily(dirHandle, `![Clipboard image](./${savedPath})`, d);
-        await addRecentSave({ title: 'Clipboard image', filename: imgFilename, url: 'clipboard', saved_at: new Date().toISOString() });
+        await addRecentSave({ title: 'Clipboard image', filename: imgFilename, url: 'clipboard', saved_at: localIsoString() });
         return { success: true };
       }
 
@@ -1771,7 +1795,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         if (!dirHandle) throw new Error('No save folder configured');
         const d = dateString();
         await appendToDaily(dirHandle, message.text, d);
-        await addRecentSave({ title: message.text.slice(0, 60), filename: `${d}.md`, url: 'clipboard', saved_at: new Date().toISOString() });
+        await addRecentSave({ title: message.text.slice(0, 60), filename: `${d}.md`, url: 'clipboard', saved_at: localIsoString() });
         return { success: true };
       }
 
